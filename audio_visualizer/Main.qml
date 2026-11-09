@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtMultimedia
+import audio_visualizer
 
 ApplicationWindow {
     id: window
@@ -13,8 +14,23 @@ ApplicationWindow {
     visible: true
     title: qsTr("Audio Visualizer")
 
+    AudioAnalyzer { id: analyzer }
+
+    Rectangle {
+        width: 600
+        height: 20
+        color: "#333333"
+
+        Rectangle {
+            width: analyzer.level * 600
+            height: parent.height
+            color: "hotpink"
+        }
+    }
+
     MediaPlayer {
         id: player
+        audioBufferOutput: analyzer.output
         audioOutput: AudioOutput { volume : 0.8 }
     }
 

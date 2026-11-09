@@ -21,6 +21,9 @@ qt_add_qml_module(appaudio_visualizer
     URI audio_visualizer
     QML_FILES
         Main.qml
+    SOURCES
+        audioanalyzer.h audioanalyzer.cpp
+
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
