@@ -38,6 +38,7 @@ ApplicationWindow {
 
     MediaPlayer {
         id: player
+        source: "importedcontent/heylu.mp3"
         audioBufferOutput: analyzer.output
         audioOutput: AudioOutput { volume : 0.8 }
     }
@@ -52,6 +53,15 @@ ApplicationWindow {
         anchors.centerIn: parent
         spacing: 16
         width: parent.width * 0.8
+
+        Label {
+            text: {
+                const path = player.source.toString()
+                return "Currently playing: " + path.substring(path.lastIndexOf("/") + 1)
+            }
+            font.pixelSize: 22
+            font.bold: true
+        }
 
         Row {
             spacing: 8

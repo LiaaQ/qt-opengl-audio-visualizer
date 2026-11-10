@@ -23,6 +23,8 @@ qt_add_qml_module(appaudio_visualizer
         Main.qml
     SOURCES
         audioanalyzer.h audioanalyzer.cpp
+        SOURCES fft.h
+        RESOURCES "importedcontent/heylu.mp3"
 
 )
 

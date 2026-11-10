@@ -11,6 +11,11 @@ AudioAnalyzer::AudioAnalyzer(QObject *parent)
     m_timer.setInterval(16);
     connect(&m_timer, &QTimer::timeout, this, &AudioAnalyzer::update);
     m_timer.start();
+
+
+    const float twoPi = 6.2831853f;
+    for (int i = 0; i < kWindow; ++i)
+        m_hann[i] = 0.5f * (1.0f - std::cos(twoPi * i / kWindow));
 }
 
 void AudioAnalyzer::onBuffer(const QAudioBuffer &buffer)
@@ -29,13 +34,35 @@ void AudioAnalyzer::onBuffer(const QAudioBuffer &buffer)
 
 void AudioAnalyzer::update()
 {
+    const int start = (m_write - m_delaySamples - kWindow + kRing) % kRing;
     double sumSquares = 0.0;
-    int start = (m_write - m_delaySamples - kWindow + kRing) % kRing;
 
     for(int i = 0; i < kWindow; i++) {
-        const double s = m_ring[(start + i) % kRing];
-        sumSquares += s * s;
+        const float s = m_ring[(start + i) % kRing] * m_hann[i];
+        m_buf[i] = std::complex<float>(s, 0.0f);
+
+        const double s2 = m_ring[(start + i) % kRing];
+        sumSquares += s2 * s2;
+
+
     }
+
+    m_fft.forward(m_buf.data());
+
+    for (int k = 0; k <= kWindow / 2; k++)
+        m_mag[k] = std::abs(m_buf[k]);
+
+    int idxMax = 0;
+    float maxMag = 0.0f;
+    for (int k = 1; k < kWindow / 2; k++) {
+        if (m_mag[k] > maxMag) {
+            idxMax = k;
+            maxMag = m_mag[k];
+        }
+    }
+
+    if(++m_tick % 60 == 0)
+        qDebug() << idxMax * 44100.0 / kWindow << "Hz, magnitude" << maxMag;
 
     m_level = std::sqrt(sumSquares / kWindow);
     emit levelChanged();

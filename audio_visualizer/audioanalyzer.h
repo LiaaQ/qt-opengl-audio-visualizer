@@ -7,6 +7,8 @@
 #include <QAudioBuffer>
 #include <array>
 #include <QTimer>
+#include <complex>
+#include "fft.h"
 
 class AudioAnalyzer : public QObject
 {
@@ -40,6 +42,12 @@ private:
     float m_delayMs = 0.0f;
     int m_delaySamples = 0;
     double m_level = 0.0;
+    int m_tick = 0;
+
+    Fft m_fft{kWindow};
+    std::array<std::complex<float>, kWindow> m_buf{}; // FFT input and output
+    std::array<float, kWindow> m_hann{};              // window, computed once
+    std::array<float, kWindow / 2 + 1> m_mag{};       // magnitudes, bins 0..1024
 };
 
 #endif // AUDIOANALYZER_H
