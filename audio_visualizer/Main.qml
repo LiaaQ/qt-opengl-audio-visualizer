@@ -14,6 +14,14 @@ ApplicationWindow {
     visible: true
     title: qsTr("Audio Visualizer")
 
+    function formatTime(milliseconds) {
+            const totalSeconds = Math.floor(milliseconds / 1000)
+            const minutes = Math.floor(totalSeconds / 60)
+            const seconds = totalSeconds % 60
+
+            return minutes + ":" + seconds.toString().padStart(2, "0")
+    }
+
     AudioAnalyzer { id: analyzer }
 
     Rectangle {
@@ -42,7 +50,7 @@ ApplicationWindow {
 
     Column {
         anchors.centerIn: parent
-        spacing: 12
+        spacing: 16
         width: parent.width * 0.8
 
         Row {
@@ -56,12 +64,46 @@ ApplicationWindow {
             Button { text: "Stop"; onClicked: player.stop() }
         }
 
-        Slider {
+        // Playback position
+        Column {
             width: parent.width
-            from: 0; to: player.duration
-            value: player.position
-            onMoved: player.position = value
+            spacing: 4
+
+            Row {
+                width: parent.width
+
+                Label {
+                    text: "Playback position"
+                    font.bold: true
+                }
+
+                Item {
+                    width: parent.width - 200
+                    height: 1
+                }
+
+                Label {
+                    text: formatTime(player.position)
+                        + " / " + formatTime(player.duration)
+                }
+            }
+
+            Slider {
+                width: parent.width
+                from: 0
+                to: Math.max(1, player.duration)
+                value: player.position
+
+                onMoved: player.position = value
+            }
         }
+
+        // Slider {
+        //     width: parent.width
+        //     from: 0; to: 300
+        //     value: analyzer.delayMs
+        //     onMoved: analyzer.delayMs = value
+        // }
     }
 
 }
