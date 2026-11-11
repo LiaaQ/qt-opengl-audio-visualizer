@@ -37,17 +37,21 @@ private:
 
     QAudioBufferOutput m_output;
     QTimer m_timer;
-    std::array<float, kRing> m_ring{};
+
     int m_write = 0;
-    float m_delayMs = 0.0f;
-    int m_delaySamples = 0;
-    double m_level = 0.0;
+    int m_sampleRate = 44100;
     int m_tick = 0;
+    float m_delayMs = 0.0f;
+    double m_level = 0.0;
 
     Fft m_fft{kWindow};
+    std::array<float, kRing> m_ring{};
     std::array<std::complex<float>, kWindow> m_buf{}; // FFT input and output
     std::array<float, kWindow> m_hann{};              // window, computed once
     std::array<float, kWindow / 2 + 1> m_mag{};       // magnitudes, bins 0..1024
+
+    template <typename T>
+    void pushFrames(const T *s, qsizetype frames, int channels, float scale);
 };
 
 #endif // AUDIOANALYZER_H

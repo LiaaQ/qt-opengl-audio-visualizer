@@ -18,23 +18,48 @@ AudioAnalyzer::AudioAnalyzer(QObject *parent)
         m_hann[i] = 0.5f * (1.0f - std::cos(twoPi * i / kWindow));
 }
 
+template <typename T>
+void AudioAnalyzer::pushFrames(const T *s, qsizetype frames, int channels, float scale)
+{
+    for (qsizetype i = 0; i < frames; ++i) {
+        float sum = 0.0f;
+        for (int c = 0; c < channels; ++c)
+            sum += float(s[i * channels + c]);
+        m_ring[m_write] = scale * sum / channels;     // mono = average of channels
+        m_write = (m_write + 1) % kRing;
+    }
+}
+
 void AudioAnalyzer::onBuffer(const QAudioBuffer &buffer)
 {
-    if (!buffer.isValid() || buffer.sampleCount() == 0 || buffer.format().sampleFormat() != QAudioFormat::Float || buffer.format().channelCount() != 2)
+    if (!buffer.isValid() || buffer.frameCount() == 0)
         return;
 
-    const float *samples = buffer.constData<float>();
+    const QAudioFormat fmt = buffer.format();
+    m_sampleRate = fmt.sampleRate();
+    const int ch = fmt.channelCount();
+    const qsizetype n = buffer.frameCount();
 
-    for (qsizetype i = 0; i < buffer.frameCount(); ++i)
-    {
-        m_ring[m_write] = 0.5f * (samples[2*i] + samples[2*i+1]);
-        m_write = (m_write + 1) % kRing;
+    switch (fmt.sampleFormat()) {
+    case QAudioFormat::Float:
+        pushFrames(buffer.constData<float>(),  n, ch, 1.0f);
+        break;
+    case QAudioFormat::Int16:
+        pushFrames(buffer.constData<qint16>(), n, ch, 1.0f / 32768.0f);
+        break;
+    case QAudioFormat::Int32:
+        pushFrames(buffer.constData<qint32>(), n, ch, 1.0f / 2147483648.0f);
+        break;
+    default:
+        break;      // other formats: ignore for now
     }
 }
 
 void AudioAnalyzer::update()
 {
-    const int start = (m_write - m_delaySamples - kWindow + kRing) % kRing;
+    const int delaySamples = std::min(int(m_delayMs * m_sampleRate / 1000.0f),
+                                          kRing - kWindow);
+    const int start = (m_write - delaySamples - kWindow + kRing) % kRing;
     double sumSquares = 0.0;
 
     for(int i = 0; i < kWindow; i++) {
@@ -43,8 +68,6 @@ void AudioAnalyzer::update()
 
         const double s2 = m_ring[(start + i) % kRing];
         sumSquares += s2 * s2;
-
-
     }
 
     m_fft.forward(m_buf.data());
@@ -62,7 +85,7 @@ void AudioAnalyzer::update()
     }
 
     if(++m_tick % 60 == 0)
-        qDebug() << idxMax * 44100.0 / kWindow << "Hz, magnitude" << maxMag;
+        qDebug() << idxMax * double(m_sampleRate) / kWindow << "Hz, magnitude" << maxMag;
 
     m_level = std::sqrt(sumSquares / kWindow);
     emit levelChanged();
@@ -73,6 +96,5 @@ void AudioAnalyzer::setDelayMs(float ms)
     ms = std::clamp(ms, 0.0f, 300.0f);
     if (ms == m_delayMs) return;
     m_delayMs = ms;
-    m_delaySamples = int(ms * 44.1f); // 44.1 samples per ms at 44.1 kHz
     emit delayMsChanged();
 }
