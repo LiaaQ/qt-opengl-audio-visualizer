@@ -17,10 +17,12 @@ class AudioAnalyzer : public QObject
     Q_PROPERTY(QAudioBufferOutput* output READ output CONSTANT FINAL)
     Q_PROPERTY(double level READ level NOTIFY levelChanged FINAL)
     Q_PROPERTY(float delayMs READ delayMs WRITE setDelayMs NOTIFY delayMsChanged FINAL)
+    Q_PROPERTY(QVariantList bands READ bands NOTIFY bandsChanged FINAL)
 
 public:
     explicit AudioAnalyzer(QObject *parent = nullptr);
     QAudioBufferOutput *output() { return &m_output; }
+    QVariantList bands() const;
     double level() const { return m_level; }
     float delayMs() const { return m_delayMs; }
     void setDelayMs(float ms);
@@ -28,12 +30,20 @@ public:
 signals:
     void levelChanged();
     void delayMsChanged();
+    void bandsChanged();
 private slots:
     void onBuffer(const QAudioBuffer &buffer);
     void update();
 private:
     static constexpr int kWindow = 2048;
     static constexpr int kRing = 16384; // 370 ms of history
+    static constexpr int kBands = 8;
+    static constexpr double fLow = 50.0;
+    static constexpr double fHigh = 12000.0;
+    static constexpr double kPeakDecay = 0.998;
+    static constexpr double kMinPeak = 0.02;
+    static constexpr float kAttack = 0.05f;
+    static constexpr float kRelease = 0.03f;
 
     QAudioBufferOutput m_output;
     QTimer m_timer;
@@ -49,6 +59,9 @@ private:
     std::array<std::complex<float>, kWindow> m_buf{}; // FFT input and output
     std::array<float, kWindow> m_hann{};              // window, computed once
     std::array<float, kWindow / 2 + 1> m_mag{};       // magnitudes, bins 0..1024
+    std::array<double, kBands + 1> m_edgeHz{};          // Edge frequencies of bands
+    std::array<float, kBands> m_peak{};
+    std::array<float, kBands> m_levels{};
 
     template <typename T>
     void pushFrames(const T *s, qsizetype frames, int channels, float scale);

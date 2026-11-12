@@ -108,6 +108,23 @@ ApplicationWindow {
             }
         }
 
+        Row {
+            spacing: 6
+            Repeater {
+                model: analyzer.bands                 // 8 numbers
+                delegate: Item {
+                    required property real modelData  // the value for this bar
+                    width: 40; height: 200
+                    Rectangle {
+                        width: parent.width
+                        height: parent.height * parent.modelData
+                        anchors.bottom: parent.bottom
+                        color: "hotpink"
+                    }
+                }
+            }
+        }
+
         // Slider {
         //     width: parent.width
         //     from: 0; to: 300

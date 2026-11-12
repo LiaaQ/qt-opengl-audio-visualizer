@@ -16,6 +16,17 @@ AudioAnalyzer::AudioAnalyzer(QObject *parent)
     const float twoPi = 6.2831853f;
     for (int i = 0; i < kWindow; ++i)
         m_hann[i] = 0.5f * (1.0f - std::cos(twoPi * i / kWindow));
+
+    for(int i = 0; i < kBands + 1; i++) // Edge frequencies for the bands
+        m_edgeHz[i] = fLow * std::pow(fHigh / fLow, double(i) / kBands);
+}
+
+QVariantList AudioAnalyzer::bands() const {
+    QVariantList bands;
+    for(float val : m_levels)
+        bands.append(double(val));
+
+    return bands;
 }
 
 template <typename T>
@@ -75,20 +86,36 @@ void AudioAnalyzer::update()
     for (int k = 0; k <= kWindow / 2; k++)
         m_mag[k] = std::abs(m_buf[k]);
 
-    int idxMax = 0;
-    float maxMag = 0.0f;
-    for (int k = 1; k < kWindow / 2; k++) {
-        if (m_mag[k] > maxMag) {
-            idxMax = k;
-            maxMag = m_mag[k];
-        }
+    for (int i = 0; i < kBands; i++) {
+        int lo = int(std::round(m_edgeHz[i]   * kWindow / m_sampleRate));
+        int hi = int(std::round(m_edgeHz[i+1] * kWindow / m_sampleRate));
+        hi = std::min(hi, kWindow / 2);
+
+        if (hi <= lo) lo = hi - 1;
+
+        double power = 0.0;
+        for (int k = lo; k < hi; k++)
+            power += double(m_mag[k]) * m_mag[k];
+
+        const double amp = std::sqrt(power) / (kWindow * 0.25);
+        m_peak[i] = float(std::max(m_peak[i] * kPeakDecay, amp));
+        m_levels[i] = float(amp / std::max<double>(m_peak[i], kMinPeak));
+
+        // Smooth movement of the values
+        const float target = float(amp / std::max<double>(m_peak[i], kMinPeak));
+        const float rate = target > m_levels[i] ? kAttack : kRelease;
+        m_levels[i] += (target - m_levels[i]) * rate;
     }
 
-    if(++m_tick % 60 == 0)
-        qDebug() << idxMax * double(m_sampleRate) / kWindow << "Hz, magnitude" << maxMag;
+    if (++m_tick % 60 == 0) {
+        QDebug d = qDebug();
+        for (float v : m_levels)
+            d << v;
+    }
 
     m_level = std::sqrt(sumSquares / kWindow);
     emit levelChanged();
+    emit bandsChanged();
 }
 
 void AudioAnalyzer::setDelayMs(float ms)
