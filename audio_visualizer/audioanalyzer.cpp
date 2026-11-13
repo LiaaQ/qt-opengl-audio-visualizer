@@ -68,6 +68,13 @@ void AudioAnalyzer::onBuffer(const QAudioBuffer &buffer)
 
 void AudioAnalyzer::update()
 {
+    if (m_write != m_lastWrite)
+        m_idleTicks = 0;
+    else
+        ++m_idleTicks;
+    m_lastWrite = m_write;
+    const bool receiving = m_idleTicks < 8;     // about 130 ms with no new audio = stopped
+
     const int delaySamples = std::min(int(m_delayMs * m_sampleRate / 1000.0f),
                                           kRing - kWindow);
     const int start = (m_write - delaySamples - kWindow + kRing) % kRing;
@@ -98,19 +105,14 @@ void AudioAnalyzer::update()
             power += double(m_mag[k]) * m_mag[k];
 
         const double amp = std::sqrt(power) / (kWindow * 0.25);
-        m_peak[i] = float(std::max(m_peak[i] * kPeakDecay, amp));
-        m_levels[i] = float(amp / std::max<double>(m_peak[i], kMinPeak));
+        if(receiving) m_peak[i] = float(std::max(m_peak[i] * kPeakDecay, amp));
 
-        // Smooth movement of the values
-        const float target = float(amp / std::max<double>(m_peak[i], kMinPeak));
+        // Smooth movement of the values, fade out when audio stops
+        const float target = receiving
+                                 ? float(amp / std::max<double>(m_peak[i], kMinPeak))
+                                 : 0.0f;
         const float rate = target > m_levels[i] ? kAttack : kRelease;
         m_levels[i] += (target - m_levels[i]) * rate;
-    }
-
-    if (++m_tick % 60 == 0) {
-        QDebug d = qDebug();
-        for (float v : m_levels)
-            d << v;
     }
 
     m_level = std::sqrt(sumSquares / kWindow);

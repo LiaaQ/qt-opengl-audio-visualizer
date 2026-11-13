@@ -42,11 +42,14 @@ private:
     static constexpr double fHigh = 12000.0;
     static constexpr double kPeakDecay = 0.998;
     static constexpr double kMinPeak = 0.02;
-    static constexpr float kAttack = 0.05f;
-    static constexpr float kRelease = 0.03f;
+    static constexpr float kAttack = 0.8f;
+    static constexpr float kRelease = 0.08f;
 
     QAudioBufferOutput m_output;
     QTimer m_timer;
+
+    int m_lastWrite = 0;
+    int m_idleTicks = 0;
 
     int m_write = 0;
     int m_sampleRate = 44100;
