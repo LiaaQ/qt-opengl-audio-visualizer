@@ -2,7 +2,8 @@
 
 An audio visualizer built with Qt 6 (QML) and OpenGL. Load a song and fly through a neon vaporwave world whose terrain ripples to the music.
 
-> **Status:** early development
+> **Status:** v0.0 (https://github.com/LiaaQ/qt-opengl-audio-visualizer/releases/tag/v0.0)
+> <img width="985" height="768" alt="image" src="https://github.com/user-attachments/assets/afe44eca-a8df-4572-a146-d1e36b47e6b4" />
 
 ## Vision
 
