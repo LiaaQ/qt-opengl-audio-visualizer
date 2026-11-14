@@ -1,6 +1,13 @@
 #include "audioanalyzer.h"
+
 #include <cmath>
 #include <algorithm>
+#include <complex>
+
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
 
 AudioAnalyzer::AudioAnalyzer(QObject *parent)
     : QObject{parent}
@@ -8,122 +15,152 @@ AudioAnalyzer::AudioAnalyzer(QObject *parent)
     // When m_output receives a new audio buffer, call onBuffer() in this AudioAnalyzer object.
     connect(&m_output, &QAudioBufferOutput::audioBufferReceived, this, &AudioAnalyzer::onBuffer);
 
+    // Update the visualisation approximately 60 times per second.
     m_timer.setInterval(16);
+
+
     connect(&m_timer, &QTimer::timeout, this, &AudioAnalyzer::update);
     m_timer.start();
 
-
+    // Precalculate the Hann window used to reduce FFT spectral leakage.
     const float twoPi = 6.2831853f;
-    for (int i = 0; i < kWindow; ++i)
-        m_hann[i] = 0.5f * (1.0f - std::cos(twoPi * i / kWindow));
+    for (int i = 0; i < kWindow; ++i) {
+        const float pos = float(i) / kWindow;
+        m_hann[i] = 0.5f * (1.0f - std::cos(twoPi * pos));
+    }
 
-    for(int i = 0; i < kBands + 1; i++) // Edge frequencies for the bands
-        m_edgeHz[i] = fLow * std::pow(fHigh / fLow, double(i) / kBands);
+    for(int i = 0; i < kBands + 1; i++) { // Edge frequencies for the bands
+        const double pos = double(i) / kBands;
+        m_edgeHz[i] = fLow * std::pow(fHigh / fLow, pos);
+    }
+
 }
+
+// -----------------------------------------------------------------------------
+// Public properties
+// -----------------------------------------------------------------------------
 
 QVariantList AudioAnalyzer::bands() const {
     QVariantList bands;
-    for(float val : m_levels)
-        bands.append(double(val));
+    for(float level : m_levels)
+        bands.append(double(level));
 
     return bands;
 }
 
+
+// -----------------------------------------------------------------------------
+// Audio input
+// -----------------------------------------------------------------------------
+
 template <typename T>
-void AudioAnalyzer::pushFrames(const T *s, qsizetype frames, int channels, float scale)
+void AudioAnalyzer::pushFrames(const T *samples, qsizetype frameCount, int channelCount, float scale)
 {
-    for (qsizetype i = 0; i < frames; ++i) {
-        float sum = 0.0f;
-        for (int c = 0; c < channels; ++c)
-            sum += float(s[i * channels + c]);
-        m_ring[m_write] = scale * sum / channels;     // mono = average of channels
+    if (!samples || channelCount <= 0) return;
+
+    for (qsizetype frame = 0; frame < frameCount; ++frame) {
+        float monoSample = 0.0f;
+
+        for (int channel = 0; channel < channelCount; ++channel) {
+            const qsizetype sampleIndex = frame * channelCount + channel;
+            monoSample += float(samples[sampleIndex]);
+        }
+
+        m_ring[m_write] = scale * monoSample / channelCount; // mono = average of channels
         m_write = (m_write + 1) % kRing;
     }
 }
 
 void AudioAnalyzer::onBuffer(const QAudioBuffer &buffer)
 {
-    if (!buffer.isValid() || buffer.frameCount() == 0)
+    if (!buffer.isValid() || buffer.frameCount() <= 0)
         return;
 
-    const QAudioFormat fmt = buffer.format();
-    m_sampleRate = fmt.sampleRate();
-    const int ch = fmt.channelCount();
-    const qsizetype n = buffer.frameCount();
+    const QAudioFormat format = buffer.format();
 
-    switch (fmt.sampleFormat()) {
+    m_sampleRate = format.sampleRate();
+    const int channelCount = format.channelCount();
+    const qsizetype frameCount = buffer.frameCount();
+
+    if (m_sampleRate <= 0 || channelCount <= 0)
+        return;
+
+    switch (format.sampleFormat()) {
     case QAudioFormat::Float:
-        pushFrames(buffer.constData<float>(),  n, ch, 1.0f);
+        pushFrames(buffer.constData<float>(),  frameCount, channelCount, 1.0f);
         break;
     case QAudioFormat::Int16:
-        pushFrames(buffer.constData<qint16>(), n, ch, 1.0f / 32768.0f);
+        pushFrames(buffer.constData<qint16>(), frameCount, channelCount, 1.0f / 32768.0f);
         break;
     case QAudioFormat::Int32:
-        pushFrames(buffer.constData<qint32>(), n, ch, 1.0f / 2147483648.0f);
+        pushFrames(buffer.constData<qint32>(), frameCount, channelCount, 1.0f / 2147483648.0f);
         break;
     default:
         break;      // other formats: ignore for now
     }
 }
 
+// -----------------------------------------------------------------------------
+// Audio analysis
+// -----------------------------------------------------------------------------
+
 void AudioAnalyzer::update()
 {
-    if (m_write != m_lastWrite)
-        m_idleTicks = 0;
-    else
-        ++m_idleTicks;
-    m_lastWrite = m_write;
-    const bool receiving = m_idleTicks < 8;     // about 130 ms with no new audio = stopped
+    if (m_sampleRate <= 0) return;
 
-    const int delaySamples = std::min(int(m_delayMs * m_sampleRate / 1000.0f),
-                                          kRing - kWindow);
-    const int start = (m_write - delaySamples - kWindow + kRing) % kRing;
+    // Determine whether new audio samples have arrived.
+    if (m_write != m_lastWrite) m_idleTicks = 0;
+    else ++m_idleTicks;
+    m_lastWrite = m_write;
+    const bool receivingAudio = m_idleTicks < 8;     // about 130 ms with no new audio = stopped
+
+    const int start = (m_write - kWindow + kRing) % kRing;   // start of the newest kWindow samples
     double sumSquares = 0.0;
 
-    for(int i = 0; i < kWindow; i++) {
-        const float s = m_ring[(start + i) % kRing] * m_hann[i];
-        m_buf[i] = std::complex<float>(s, 0.0f);
-
-        const double s2 = m_ring[(start + i) % kRing];
-        sumSquares += s2 * s2;
+    for (int i = 0; i < kWindow; i++) {
+        const float raw = m_ring[(start + i) % kRing];            // the actual sample
+        m_buf[i] = std::complex<float>(raw * m_hann[i], 0.0f);    // windowed copy for the FFT
+        sumSquares += double(raw) * raw;                          // RMS uses the raw one
     }
 
+    // Transform the audio signal from the time domain into the frequency domain.
     m_fft.forward(m_buf.data());
 
-    for (int k = 0; k <= kWindow / 2; k++)
-        m_mag[k] = std::abs(m_buf[k]);
+    for (int bin = 0; bin <= kWindow / 2; bin++)
+        m_mag[bin] = std::abs(m_buf[bin]);
 
-    for (int i = 0; i < kBands; i++) {
-        int lo = int(std::round(m_edgeHz[i]   * kWindow / m_sampleRate));
-        int hi = int(std::round(m_edgeHz[i+1] * kWindow / m_sampleRate));
+    // Calculate the magnitude of each frequency band.
+    for (int band = 0; band < kBands; band++) {
+        int lo = int(std::round(m_edgeHz[band]   * kWindow / m_sampleRate)); // First bin
+        int hi = int(std::round(m_edgeHz[band+1] * kWindow / m_sampleRate)); // Last bin
+
         hi = std::min(hi, kWindow / 2);
-
         if (hi <= lo) lo = hi - 1;
 
-        double power = 0.0;
-        for (int k = lo; k < hi; k++)
-            power += double(m_mag[k]) * m_mag[k];
+        double bandPower = 0.0;
 
-        const double amp = std::sqrt(power) / (kWindow * 0.25);
-        if(receiving) m_peak[i] = float(std::max(m_peak[i] * kPeakDecay, amp));
+        // Sum the squared magnitudes of all bins in this band.
+        for (int bin = lo; bin  < hi; bin++) {
+            const double magnitude = double(m_mag[bin]);
+            bandPower += magnitude * magnitude;
+        }
+
+        const double amp = std::sqrt(bandPower) / (kWindow * 0.25);
+
+        // Track the recent peak amplitude for normalisation.
+        if(receivingAudio) m_peak[band] = float(std::max(m_peak[band] * kPeakDecay, amp));
 
         // Smooth movement of the values, fade out when audio stops
-        const float target = receiving
-                                 ? float(amp / std::max<double>(m_peak[i], kMinPeak))
+        const float targetLevel = receivingAudio
+                                 ? float(amp / std::max<double>(m_peak[band], kMinPeak))
                                  : 0.0f;
-        const float rate = target > m_levels[i] ? kAttack : kRelease;
-        m_levels[i] += (target - m_levels[i]) * rate;
+        const float smoothingRate = targetLevel > m_levels[band] ? kAttack : kRelease;
+        m_levels[band] += (targetLevel - m_levels[band]) * smoothingRate;
     }
 
+    // Calculate the overall RMS audio level.
     m_level = std::sqrt(sumSquares / kWindow);
+
     emit levelChanged();
     emit bandsChanged();
-}
-
-void AudioAnalyzer::setDelayMs(float ms)
-{
-    ms = std::clamp(ms, 0.0f, 300.0f);
-    if (ms == m_delayMs) return;
-    m_delayMs = ms;
-    emit delayMsChanged();
 }

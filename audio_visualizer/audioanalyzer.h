@@ -16,7 +16,6 @@ class AudioAnalyzer : public QObject
     QML_ELEMENT
     Q_PROPERTY(QAudioBufferOutput* output READ output CONSTANT FINAL)
     Q_PROPERTY(double level READ level NOTIFY levelChanged FINAL)
-    Q_PROPERTY(float delayMs READ delayMs WRITE setDelayMs NOTIFY delayMsChanged FINAL)
     Q_PROPERTY(QVariantList bands READ bands NOTIFY bandsChanged FINAL)
 
 public:
@@ -24,12 +23,9 @@ public:
     QAudioBufferOutput *output() { return &m_output; }
     QVariantList bands() const;
     double level() const { return m_level; }
-    float delayMs() const { return m_delayMs; }
-    void setDelayMs(float ms);
 
 signals:
     void levelChanged();
-    void delayMsChanged();
     void bandsChanged();
 private slots:
     void onBuffer(const QAudioBuffer &buffer);
@@ -54,7 +50,6 @@ private:
     int m_write = 0;
     int m_sampleRate = 44100;
     int m_tick = 0;
-    float m_delayMs = 0.0f;
     double m_level = 0.0;
 
     Fft m_fft{kWindow};

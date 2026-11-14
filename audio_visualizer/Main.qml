@@ -10,8 +10,8 @@ ApplicationWindow {
 
     width: 1000
     height: 750
-    minimumWidth: 650
-    minimumHeight: 650
+    minimumWidth: 700
+    minimumHeight: 700
     visible: true
     title: qsTr("Audio Visualizer")
     color: "#101019"
@@ -408,7 +408,7 @@ ApplicationWindow {
                                 ]
 
                                 Layout.preferredWidth: 70
-                                Layout.minimumWidth: 70
+                                Layout.minimumWidth: 60
                                 Layout.maximumWidth: 80
                                 Layout.fillHeight: true
                                 spacing: 4
